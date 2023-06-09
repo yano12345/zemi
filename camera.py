@@ -6,11 +6,15 @@ import csv
 
 def save_frame_camera_cycle(device_num, dir_path,delay=1, window_name='frame'):
 
-    cap = cv2.VideoCapture(device_num)
+    INITIAL_FILE= "/Users/yanokoutarou/workspace/ゼミ/code/cert/initial.json"
 
-    if not cap.isOpened():
-        return
+    os.chdir(os.path.dirname(os.path.abspath(__file__)))
+    with open(INITIAL_FILE) as f: # 初期設定ファイルの読み込み
+        jsn = json.load(f)
+        folder_id = jsn["folder_id"] # folder_idの読み込み
     
+    drive = auth_gd()
+
     os.makedirs(dir_path, exist_ok=True)
     
     for i in range(1,13):
@@ -35,6 +39,7 @@ def save_frame_camera_cycle(device_num, dir_path,delay=1, window_name='frame'):
     now_time = datetime.datetime.now()
 
     timeFlag = 0
+    dayFlag = 0
 
     
     while True:
@@ -45,6 +50,20 @@ def save_frame_camera_cycle(device_num, dir_path,delay=1, window_name='frame'):
         now_time = datetime.datetime.now()
         hour_time = now_time.hour
         if (hour_time >= 0 and hour_time < 6) or (hour_time >= 17 and hour_time < 24):
+            if (hour_time == 20 and dayFlag == 0):
+                print('アップロード開始') 
+                first_path = dir_path + str(now_time.month).zfill(2)
+                second_path = first_path + '/' + str(now_time.day).zfill(2)
+                base_path = create_dir(folder_id,'Image',drive)
+                first_folder = create_dir(base_path,os.path.basename(first_path),drive)
+                second_folder = create_dir(first_folder,os.path.basename(second_path),drive)
+                dir_list = dirList(second_path)
+                for i in dir_list:
+                    third_folder = create_dir(second_folder,os.path.basename(i),drive)
+                    file_list = fileList(i)
+                    upload_file(third_folder,file_list,drive)
+                dayFlag = 1
+                print('finish')
             continue
         else:
             now_min = str(now_time.minute).zfill(2)
@@ -76,6 +95,7 @@ def save_frame_camera_cycle(device_num, dir_path,delay=1, window_name='frame'):
                         writer = csv.writer(f)
                         writer.writerow([path+"/"+str(next_time),now_time,next_time])
                     f.close()
+                dayFlag = 0
 
 
         
@@ -115,6 +135,71 @@ def Recording(time,path,delay=1):
     cv2.destroyAllWindows()
     
     return video
+
+def auth_gd():
+    gauth = GoogleAuth() # GoogleDrive認証
+    gauth.LocalWebserverAuth()
+    drive = GoogleDrive(gauth)
+    print('認証完了')
+    return drive
+
+def create_dir(pid,fname,drive=None):
+    if drive == None:
+        drive = auth_gd()
+
+    ret = check_file(pid,fname,drive)
+    if ret==False:
+        folder = drive.CreateFile({'title':fname,
+                                   'mimeType': 'application/vnd.google-apps.folder'})
+        folder['parents'] = [{'id':pid}]
+        folder.Upload()
+    else:
+        folder = ret
+
+    return folder['id']
+
+def upload_file(pid,path,drive=None):
+    if drive == None:
+        drive = auth_gd()
+
+    name = os.path.basename(path)
+
+    ret = check_file(pid,path,drive)
+    if ret == False:
+        gf = drive.CreateFile({'title':name,
+                               'mimeType': 'video/H264',
+                               'parents': [{'kind': 'drive#fileLink', 'id':pid}]})
+        gf.SetContentFile(path)
+        gf.Upload()
+    else:
+        gf = ret
+        print(gf['title']+" exists")
+
+    return gf
+
+
+def check_file(pid,fname,drive=None):
+    if drive==None:
+        drive = auth_gd()
+
+    query = '"{}" in parents'.format(pid)
+    query += ' and title = "' + os.path.basename(fname) + '"'
+
+    list =  drive.ListFile({'q': query}).GetList()
+    if len(list)> 0:
+        return list[0]
+    return False    
+
+def dirList(path):
+    dirList = glob.glob(path+'/*')
+
+    return dirList
+
+def fileList(path):
+    fileList = glob.glob(path+'/*.mov')
+    fileList = "".join(fileList)
+
+    return fileList
 
 if __name__ == "__main__":
     path = 'image'
