@@ -2,6 +2,10 @@ import cv2
 import os
 import datetime
 import csv
+import json
+import glob
+from pydrive.auth import GoogleAuth
+from pydrive.drive import GoogleDrive
 
 
 def save_frame_camera_cycle(device_num, dir_path,delay=1, window_name='frame'):
